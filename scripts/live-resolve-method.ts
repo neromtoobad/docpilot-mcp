@@ -68,15 +68,17 @@ async function main(): Promise<void> {
   // Use a modern stripe-node version (>=14) that ships .d.ts
   // files in its tarball. The original 5.0.0 was a CJS-only
   // pre-TS release and has no .d.ts surface.
-  // Note: we use the PascalCase resource name (`Customers`)
-  // to disambiguate from sibling namespaces — there are ~150
-  // `create` methods in the stripe-node .d.ts tree, so the
-  // suffix-match fallback would otherwise pick the first
-  // declaration it encounters.
+  // Note: stripe-node's real `.d.ts` files declare the
+  // resource as `class CustomersResource` (not `namespace
+  // customers`), so the caller must use the full resource
+  // name to disambiguate from sibling namespaces. The
+  // offline test fixture uses a `declare namespace customers`
+  // shape so the canonical `customers.create` lookup works
+  // there; the live wire call uses the real name.
   calls.push(
     await capture(
-      { package: 'stripe', version: '17.0.0', method: 'Customers.create' },
-      'npm: stripe@17.0.0 — method: "Customers.create"',
+      { package: 'stripe', version: '17.0.0', method: 'CustomersResource.create' },
+      'npm: stripe@17.0.0 — method: "CustomersResource.create"',
     ),
   );
 
@@ -84,8 +86,8 @@ async function main(): Promise<void> {
   //    walker descends into other namespaces).
   calls.push(
     await capture(
-      { package: 'stripe', version: '17.0.0', method: 'Charges.create' },
-      'npm: stripe@17.0.0 — method: "Charges.create"',
+      { package: 'stripe', version: '17.0.0', method: 'ChargesResource.create' },
+      'npm: stripe@17.0.0 — method: "ChargesResource.create"',
     ),
   );
 

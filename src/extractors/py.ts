@@ -68,6 +68,23 @@ export function findSignatureInPy(
   return null;
 }
 
+function fromRaw(raw: RawMatch): ExtractedSignature {
+  const params: ExtractedParam[] = raw.params.map((p) => ({
+    name: p.name,
+    type: p.type,
+    required: p.required,
+    description: p.description,
+  }));
+  return {
+    signature: raw.signature,
+    params,
+    returns: raw.returns,
+    sourceLine: raw.source_line,
+    sourceColumn: raw.source_column,
+    description: raw.description,
+  };
+}
+
 /**
  * Return true if `path` contains `segment` as a full component
  * (matched at the start, at the end, or surrounded by dots).

@@ -18,6 +18,8 @@
     "inspect": "tsx src/inspect.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "serve": "tsx src/server-http.ts",
+    "serve:prod": "node dist/server-http.js",
     "prepublishOnly": "npm run build && npm test"
   },
   "engines": {

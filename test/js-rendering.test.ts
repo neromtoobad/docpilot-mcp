@@ -293,6 +293,7 @@ function makeDeps(staticPage: {
       get: async () => '',
       getJson: async () => ({}),
     },
+    resolveDocsUrl: () => staticPage.url,
     fetchPage: async () => staticPage,
     loadEmbedder: async () => fakeEmbedder,
   };

@@ -2,18 +2,24 @@
  * `query_docs` — answer a natural-language question against the
  * version-accurate docs of an npm or PyPI package.
  *
- * Pipeline:
+ * Pipeline (AC-3 + AC-7):
  *   1. Resolve the package's docs URL (known mapping → registry
  *      homepage → bail with E_NOT_FOUND).
  *   2. Fetch the page (cheerio). If the chunk cache is missing,
  *      build it on disk; otherwise reuse it. Either way, log
  *      `cache=hit` or `cache=miss` on stderr.
- *   3. Chunk the body, rank against the question (TF-IDF cosine),
- *      keep the top-K results.
- *   4. Format an `answer_markdown` (≤ 2000 tokens) ending with a
+ *   3. Build the vector index (hnswlib-node) from the chunks if
+ *      it's not already on disk. The embedding model is local
+ *      (Xenova/all-MiniLM-L6-v2, 384-dim) and is loaded lazily
+ *      on the first call. If the model can't be loaded (network
+ *      down, ONNX runtime missing, …), we fall back to the
+ *      TF-IDF ranker and log a `WARN` — the server never crashes
+ *      on a missing embedding model.
+ *   4. Rank against the question (vector k-NN or TF-IDF cosine)
+ *      and keep the top-K results.
+ *   5. Format an `answer_markdown` (≤ 2000 tokens) ending with a
  *      `Sources:` list. The top result's `snippet` is a literal
- *      slice of the top chunk's text — verified to contain a
- *      literal phrase from the package's docs in `tests/`.
+ *      slice of the top chunk's text.
  */
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
@@ -25,6 +31,17 @@ import type { Chunk } from '../extractors/markdownChunks.js';
 import { chunkText } from '../extractors/markdownChunks.js';
 import { rankChunks, type ScoredChunk } from '../index/lexical.js';
 import { hasChunks, loadChunks, saveChunks } from '../index/store.js';
+import {
+  addChunkVector,
+  buildIndexInMemory,
+  hasVectorIndex,
+  loadVectorIndex,
+  loadVectorMeta,
+  saveVectorIndex,
+  searchVectorIndex,
+  type BuiltVectorIndex,
+} from '../index/vectorStore.js';
+import { loadEmbedder, type Embedder } from '../index/embed.js';
 import { getKnownDocs } from '../sources/docsSite.js';
 import { fetchPage, type FetchedPage } from '../sources/fetchPage.js';
 import { FetchHttpClient, type HttpClient } from '../net/httpClient.js';
@@ -54,6 +71,38 @@ export interface QueryDocsDeps {
   /** Override the chunk store (for tests). */
   loadChunks?: (ecosystem: Ecosystem, pkg: string, version: string) => Promise<Chunk[] | null>;
   saveChunks?: (ecosystem: Ecosystem, pkg: string, version: string, chunks: Chunk[]) => Promise<void>;
+  /**
+   * Override the embedder loader. Default delegates to
+   * `loadEmbedder()` (which returns `null` on failure and
+   * silently falls back to the TF-IDF ranker).
+   */
+  loadEmbedder?: () => Promise<Embedder | null>;
+  /**
+   * Override the vector-index presence check (for tests).
+   */
+  hasVectorIndex?: (ecosystem: Ecosystem, pkg: string, version: string) => boolean;
+  /**
+   * Override the vector-index loader (for tests).
+   */
+  loadVectorIndex?: (
+    ecosystem: Ecosystem,
+    pkg: string,
+    version: string,
+  ) => Promise<BuiltVectorIndex | null>;
+  /**
+   * Override the vector-index builder. Takes the chunks and an
+   * embedder, returns a built (but not yet persisted) index.
+   */
+  buildVectorIndex?: (chunks: Chunk[], embedder: Embedder) => BuiltVectorIndex;
+  /**
+   * Override the vector-index saver. Persists the index to disk.
+   */
+  saveVectorIndex?: (
+    built: BuiltVectorIndex,
+    ecosystem: Ecosystem,
+    pkg: string,
+    version: string,
+  ) => Promise<unknown>;
 }
 
 export interface QueryDocsArgs {
@@ -125,7 +174,6 @@ function buildAnswer(top: ScoredChunk[], maxTokens: number): {
 
   const body = top
     .map((s, i) => {
-      const url = s.chunk.url;
       const section = s.chunk.section || '(untitled)';
       const snippet = s.chunk.text.length > 320 ? `${s.chunk.text.slice(0, 320)}…` : s.chunk.text;
       return `**${i + 1}. ${section}** — _score ${s.score.toFixed(3)}_\n\n${snippet}`;
@@ -160,12 +208,17 @@ export async function handleQueryDocs(
     fetchPage: userDeps.fetchPage ?? defaultFetchPageImpl,
     loadChunks: userDeps.loadChunks ?? defaultLoadChunksImpl,
     saveChunks: userDeps.saveChunks ?? defaultSaveChunksImpl,
+    loadEmbedder: userDeps.loadEmbedder ?? loadEmbedder,
+    hasVectorIndex: userDeps.hasVectorIndex ?? hasVectorIndex,
+    loadVectorIndex: userDeps.loadVectorIndex ?? defaultLoadVectorIndex,
+    buildVectorIndex: userDeps.buildVectorIndex ?? buildIndexInMemory,
+    saveVectorIndex: userDeps.saveVectorIndex ?? saveVectorIndex,
   };
 
   const ecosystem = detectEcosystem(args.package);
   const version = args.version;
 
-  // 1) Cache check.
+  // 1) Chunk cache check.
   let chunks = await deps.loadChunks!(ecosystem, args.package, version);
   const cacheHit = chunks !== null && chunks.length > 0;
   if (cacheHit) {
@@ -220,8 +273,16 @@ export async function handleQueryDocs(
     }
   }
 
-  // 3) Rank against the question.
-  const top = rankChunks(chunks!, args.question, { topK: 5 });
+  // 3) Rank against the question — vector k-NN first, lexical
+  // fallback if the model can't be loaded.
+  const top = await rankWithVectorFallback(
+    deps,
+    ecosystem,
+    args.package,
+    version,
+    chunks!,
+    args.question,
+  );
   if (top.length === 0) {
     return {
       ok: false,
@@ -241,6 +302,89 @@ export async function handleQueryDocs(
       sources,
     },
   };
+}
+
+/**
+ * AC-7 ranking path: try the vector index, fall back to lexical.
+ *
+ * Returns an array of `ScoredChunk` so the existing
+ * `buildAnswer` formatting works unchanged regardless of which
+ * path served the results.
+ */
+async function rankWithVectorFallback(
+  deps: QueryDocsDeps,
+  ecosystem: Ecosystem,
+  pkg: string,
+  version: string,
+  chunks: Chunk[],
+  question: string,
+): Promise<ScoredChunk[]> {
+  // Try vector path.
+  const embedder = await deps.loadEmbedder!();
+  if (!embedder) {
+    debug('query_docs vector=unavailable ranker=lexical');
+    return rankChunks(chunks, question, { topK: 5 });
+  }
+
+  // Load or build the vector index.
+  let built: BuiltVectorIndex | null = null;
+  const onDisk = deps.hasVectorIndex!(ecosystem, pkg, version);
+  if (onDisk) {
+    try {
+      const meta = await loadVectorMeta(ecosystem, pkg, version);
+      if (meta && meta.model === embedder.modelId && meta.dim === embedder.dim) {
+        built = await deps.loadVectorIndex!(ecosystem, pkg, version);
+        info(
+          `query_docs vector=hit pkg=${pkg}@${version} model=${meta.model} count=${meta.count}`,
+        );
+      } else {
+        debug(
+          `query_docs vector meta mismatch (cached model=${meta?.model ?? 'none'} dim=${meta?.dim ?? 0} vs current model=${embedder.modelId} dim=${embedder.dim}); rebuilding`,
+        );
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      warn(`query_docs vector load failed: ${message}; rebuilding`);
+    }
+  }
+  if (!built) {
+    info(
+      `query_docs vector=miss pkg=${pkg}@${version} chunks=${chunks.length} model=${embedder.modelId} dim=${embedder.dim}; building`,
+    );
+    try {
+      built = deps.buildVectorIndex!(chunks, embedder);
+      for (let i = 0; i < chunks.length; i++) {
+        const vec = await embedder.embedOne(chunks[i].text);
+        addChunkVector(built, i, vec);
+      }
+      await deps.saveVectorIndex!(built, ecosystem, pkg, version);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      warn(`query_docs vector build failed: ${message}; falling back to lexical`);
+      return rankChunks(chunks, question, { topK: 5 });
+    }
+  }
+
+  // Embed the question and run k-NN.
+  try {
+    const qVec = await embedder.embedOne(question);
+    const hits = searchVectorIndex(built, qVec, 5);
+    return hits.map((h) => ({ chunk: chunks[h.label], score: 1 - h.distance }));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    warn(`query_docs vector search failed: ${message}; falling back to lexical`);
+    return rankChunks(chunks, question, { topK: 5 });
+  }
+}
+
+async function defaultLoadVectorIndex(
+  ecosystem: Ecosystem,
+  pkg: string,
+  version: string,
+): Promise<BuiltVectorIndex | null> {
+  const meta = await loadVectorMeta(ecosystem, pkg, version);
+  if (!meta) return null;
+  return await loadVectorIndex(ecosystem, pkg, version, meta);
 }
 
 export function registerQueryDocs(server: McpServer): void {

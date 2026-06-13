@@ -44,6 +44,12 @@ import {
 import { loadEmbedder, type Embedder } from '../index/embed.js';
 import { getKnownDocs } from '../sources/docsSite.js';
 import { fetchPage, type FetchedPage } from '../sources/fetchPage.js';
+import {
+  isJsRenderedPage,
+  renderWithFallback,
+  type RenderedPage,
+  type RenderWithFallbackDeps,
+} from '../sources/renderJs.js';
 import { FetchHttpClient, type HttpClient } from '../net/httpClient.js';
 
 export const MAX_ANSWER_TOKENS = 2000;
@@ -68,6 +74,13 @@ export interface QueryDocsDeps {
   resolveDocsUrl?: (pkg: string, ecosystem: Ecosystem) => string | null;
   /** Override the page fetcher (for tests). */
   fetchPage?: (url: string) => Promise<FetchedPage>;
+  /**
+   * Override the static+JS fetcher. Default: `fetchPage` (static
+   * only) plus a Playwright-based JS renderer that fires when
+   * the static body looks like an SPA shell. For tests, both
+   * hooks can be stubbed to avoid touching the network.
+   */
+  renderDocs?: (url: string) => Promise<RenderedPage>;
   /** Override the chunk store (for tests). */
   loadChunks?: (ecosystem: Ecosystem, pkg: string, version: string) => Promise<Chunk[] | null>;
   saveChunks?: (ecosystem: Ecosystem, pkg: string, version: string, chunks: Chunk[]) => Promise<void>;
@@ -131,6 +144,29 @@ function defaultResolveDocsUrl(pkg: string, ecosystem: Ecosystem): string | null
 
 function defaultFetchPageImpl(url: string): Promise<FetchedPage> {
   return fetchPage(DEFAULT_DEPS.http, url);
+}
+
+/**
+ * Default docs renderer: static `cheerio` fetch, falling back
+ * to a Playwright-based JS renderer when the static body looks
+ * like an SPA shell. The Playwright import is deferred to the
+ * first call (and only when the fallback actually fires) so
+ * the static-only path stays Playwright-free.
+ */
+function defaultRenderDocsImpl(): (url: string) => Promise<RenderedPage> {
+  return async (url: string): Promise<RenderedPage> => {
+    const deps: RenderWithFallbackDeps = {
+      fetchStatic: (u: string) => defaultFetchPageImpl(u),
+    };
+    try {
+      const { renderWithJs } = await import("../sources/renderJs.js");
+      deps.renderJs = (u: string) => renderWithJs(u);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      warn(`query_docs could not load Playwright renderer: ${message}; static-only`);
+    }
+    return await renderWithFallback(url, deps);
+  };
 }
 
 function defaultLoadChunksImpl(
@@ -206,6 +242,17 @@ export async function handleQueryDocs(
     ...userDeps,
     resolveDocsUrl: userDeps.resolveDocsUrl ?? defaultResolveDocsUrl,
     fetchPage: userDeps.fetchPage ?? defaultFetchPageImpl,
+    // `renderDocs` is the new AC-8 entry point. If the caller
+    // didn't override it, fall back to a static-only path that
+    // uses whatever `fetchPage` override they provided. This
+    // keeps the older `fetchPage`-only test harness working
+    // without forcing every test to know about Playwright.
+    renderDocs:
+      userDeps.renderDocs ??
+      (async (url: string) => {
+        const page = await (userDeps.fetchPage ?? defaultFetchPageImpl)(url);
+        return { ...page, renderer: 'static' as const };
+      }),
     loadChunks: userDeps.loadChunks ?? defaultLoadChunksImpl,
     saveChunks: userDeps.saveChunks ?? defaultSaveChunksImpl,
     loadEmbedder: userDeps.loadEmbedder ?? loadEmbedder,
@@ -238,9 +285,9 @@ export async function handleQueryDocs(
       };
     }
     debug(`query_docs fetching ${docsUrl}`);
-    let page: FetchedPage;
+    let page: RenderedPage;
     try {
-      page = await deps.fetchPage!(docsUrl);
+      page = await deps.renderDocs!(docsUrl);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return {
@@ -250,11 +297,11 @@ export async function handleQueryDocs(
       };
     }
     if (page.text.length < 50) {
-      warn(`query_docs body too small at ${docsUrl} (${page.text.length} chars)`);
+      warn(`query_docs body too small at ${docsUrl} (${page.text.length} chars, renderer=${page.renderer})`);
       return {
         ok: false,
         code: 'E_UPSTREAM',
-        message: `Docs at ${docsUrl} returned too little content (${page.text.length} chars). The site may require JS rendering (AC-8 will add that fallback).`,
+        message: `Docs at ${docsUrl} returned too little content (${page.text.length} chars; renderer=${page.renderer}). The JS-rendered body may still be empty — try a different package.`,
       };
     }
     chunks = chunkText(page.text, page.url);

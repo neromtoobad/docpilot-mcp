@@ -1,9 +1,11 @@
 /**
  * Fetch a docs page and return a text-only "markdown-ish" view of it.
  *
- * AC-3 only needs the static / cheerio path; AC-8 will add the
- * Playwright fallback (when the page is JS-rendered, the body has
- * fewer than 50 chars, or it contains a `data-reactroot` mount point).
+ * The static (cheerio) path is the default and is what AC-3 uses.
+ * AC-8 layered a Playwright-based JS renderer on top: when the
+ * static body looks like an SPA shell (no useful text, mount
+ * point, etc.), `renderWithFallback` in `renderJs.ts` will
+ * re-fetch the URL with a headless browser.
  */
 import * as cheerio from 'cheerio';
 import type { HttpClient } from '../net/httpClient.js';

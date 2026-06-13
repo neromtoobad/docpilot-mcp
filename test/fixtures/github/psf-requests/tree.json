@@ -1,0 +1,15 @@
+{
+  "_doc": "Recorded GitHub Trees API response for psf/requests. Mirrors the shape of GET /repos/psf/requests/git/trees/main?recursive=1.",
+  "sha": "fixture-sha-psf-requests",
+  "url": "https://api.github.com/repos/psf/requests/git/trees/fixture-sha-psf-requests",
+  "truncated": false,
+  "tree": [
+    { "path": "README.md", "mode": "100644", "type": "blob", "sha": "a", "size": 8192, "url": "https://api.github.com/repos/psf/requests/git/blobs/a" },
+    { "path": "setup.py", "mode": "100644", "type": "blob", "sha": "b", "size": 1024, "url": "https://api.github.com/repos/psf/requests/git/blobs/b" },
+    { "path": "requests/__init__.py", "mode": "100644", "type": "blob", "sha": "c", "size": 64, "url": "https://api.github.com/repos/psf/requests/git/blobs/c" },
+    { "path": "examples", "mode": "040000", "type": "tree", "sha": "d", "url": "https://api.github.com/repos/psf/requests/git/trees/d" },
+    { "path": "examples/get-quickstart.py", "mode": "100644", "type": "blob", "sha": "e", "size": 128, "url": "https://api.github.com/repos/psf/requests/git/blobs/e" },
+    { "path": "examples/post-request.py", "mode": "100644", "type": "blob", "sha": "f", "size": 192, "url": "https://api.github.com/repos/psf/requests/git/blobs/f" },
+    { "path": "examples/send-custom-headers.py", "mode": "100644", "type": "blob", "sha": "g", "size": 192, "url": "https://api.github.com/repos/psf/requests/git/blobs/g" }
+  ]
+}

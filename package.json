@@ -1,0 +1,54 @@
+{
+  "name": "docpilot-mcp",
+  "version": "0.1.0",
+  "description": "A TypeScript MCP server that exposes 4 tools (query_docs, get_changelog, search_examples, resolve_method) so AI coding agents can fetch live, version-accurate documentation and code examples for npm and PyPI packages.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "docpilot-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "inspect": "tsx src/inspect.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "docs",
+    "documentation",
+    "ai",
+    "agent",
+    "npm",
+    "pypi"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "cheerio": "^1.0.0",
+    "hnswlib-node": "^3.0.0",
+    "@xenova/transformers": "^2.17.0",
+    "p-limit": "^6.0.0",
+    "playwright": "^1.47.0",
+    "tar": "^7.0.0",
+    "yauzl": "^3.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

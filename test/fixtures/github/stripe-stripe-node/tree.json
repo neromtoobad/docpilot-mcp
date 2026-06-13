@@ -1,0 +1,23 @@
+{
+  "_doc": "Recorded GitHub Trees API response for stripe/stripe-node. Mirrors the shape of GET /repos/stripe/stripe-node/git/trees/main?recursive=1.",
+  "sha": "fixture-sha-stripe-node",
+  "url": "https://api.github.com/repos/stripe/stripe-node/git/trees/fixture-sha-stripe-node",
+  "truncated": false,
+  "tree": [
+    { "path": "README.md", "mode": "100644", "type": "blob", "sha": "a", "size": 2048, "url": "https://api.github.com/repos/stripe/stripe-node/git/blobs/a" },
+    { "path": "package.json", "mode": "100644", "type": "blob", "sha": "b", "size": 1024, "url": "https://api.github.com/repos/stripe/stripe-node/git/blobs/b" },
+    { "path": "CHANGELOG.md", "mode": "100644", "type": "blob", "sha": "c", "size": 4096, "url": "https://api.github.com/repos/stripe/stripe-node/git/blobs/c" },
+    { "path": "src/index.js", "mode": "100644", "type": "blob", "sha": "d", "size": 128, "url": "https://api.github.com/repos/stripe/stripe-node/git/blobs/d" },
+    { "path": "src/customer.js", "mode": "100644", "type": "blob", "sha": "e", "size": 256, "url": "https://api.github.com/repos/stripe/stripe-node/git/blobs/e" },
+    { "path": "examples", "mode": "040000", "type": "tree", "sha": "f", "url": "https://api.github.com/repos/stripe/stripe-node/git/trees/f" },
+    { "path": "examples/webhook-signing.js", "mode": "100644", "type": "blob", "sha": "g", "size": 512, "url": "https://api.github.com/repos/stripe/stripe-node/git/blobs/g" },
+    { "path": "examples/create-customer.js", "mode": "100644", "type": "blob", "sha": "h", "size": 384, "url": "https://api.github.com/repos/stripe/stripe-node/git/blobs/h" },
+    { "path": "examples/charge.js", "mode": "100644", "type": "blob", "sha": "i", "size": 256, "url": "https://api.github.com/repos/stripe/stripe-node/git/blobs/i" },
+    { "path": "examples/list-customers.js", "mode": "100644", "type": "blob", "sha": "j", "size": 192, "url": "https://api.github.com/repos/stripe/stripe-node/git/blobs/j" },
+    { "path": "examples/create-customer.ts", "mode": "100644", "type": "blob", "sha": "k", "size": 320, "url": "https://api.github.com/repos/stripe/stripe-node/git/blobs/k" },
+    { "path": "examples/refund.js", "mode": "100644", "type": "blob", "sha": "l", "size": 256, "url": "https://api.github.com/repos/stripe/stripe-node/git/blobs/l" },
+    { "path": "examples/subscription.js", "mode": "100644", "type": "blob", "sha": "m", "size": 384, "url": "https://api.github.com/repos/stripe/stripe-node/git/blobs/m" },
+    { "path": "examples/payment-intent.js", "mode": "100644", "type": "blob", "sha": "n", "size": 320, "url": "https://api.github.com/repos/stripe/stripe-node/git/blobs/n" },
+    { "path": "examples/README.md", "mode": "100644", "type": "blob", "sha": "o", "size": 64, "url": "https://api.github.com/repos/stripe/stripe-node/git/blobs/o" }
+  ]
+}

@@ -40,12 +40,12 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 /** Detection heuristic: should this page be rendered with JS? */
 export function isJsRenderedPage(html: string, text: string): boolean {
   // 1. Trivially empty body — almost certainly a SPA shell.
-  if (text.length < 50) return true;
+  if (text.length < 10) return true;
   // 2. React 16 mount point. Modern React uses `<div id="root">` or
   //    `<div id="app">`; we check for both the legacy and the
   //    modern patterns so we cover both.
   if (/\bdata-reactroot\b/.test(html)) return true;
-  if (/<div[^>]*\bid\s*=\s*["'](?:root|app|__next|__nuxt|___gatsby|ng-app)["']/.test(html) && text.length < 800) {
+  if (/<div[^>]*\bid\s*=\s*["'](?:root|app|__next|__nuxt|___gatsby|ng-app)["']/.test(html) && text.length < 500) {
     return true;
   }
   // 3. <noscript> with a "please enable JavaScript" hint is a

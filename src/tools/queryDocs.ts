@@ -46,9 +46,7 @@ import { getKnownDocs } from '../sources/docsSite.js';
 import { fetchPage, type FetchedPage } from '../sources/fetchPage.js';
 import {
   isJsRenderedPage,
-  renderWithFallback,
   type RenderedPage,
-  type RenderWithFallbackDeps,
 } from '../sources/renderJs.js';
 import { FetchHttpClient, type HttpClient } from '../net/httpClient.js';
 
@@ -75,10 +73,9 @@ export interface QueryDocsDeps {
   /** Override the page fetcher (for tests). */
   fetchPage?: (url: string) => Promise<FetchedPage>;
   /**
-   * Override the static+JS fetcher. Default: `fetchPage` (static
-   * only) plus a Playwright-based JS renderer that fires when
-   * the static body looks like an SPA shell. For tests, both
-   * hooks can be stubbed to avoid touching the network.
+   * JS-only renderer, called only when `isJsRenderedPage` fires on
+   * the static result. `fetchPage` is always called first (static
+   * cheerio path). Default: Playwright-based renderer (lazy import).
    */
   renderDocs?: (url: string) => Promise<RenderedPage>;
   /** Override the chunk store (for tests). */
@@ -147,25 +144,13 @@ function defaultFetchPageImpl(url: string): Promise<FetchedPage> {
 }
 
 /**
- * Default docs renderer: static `cheerio` fetch, falling back
- * to a Playwright-based JS renderer when the static body looks
- * like an SPA shell. The Playwright import is deferred to the
- * first call (and only when the fallback actually fires) so
- * the static-only path stays Playwright-free.
+ * Default JS renderer: Playwright-based, deferred import so the
+ * static-only path never loads the browser binary.
  */
-function defaultRenderDocsImpl(): (url: string) => Promise<RenderedPage> {
+function defaultJsRendererImpl(): (url: string) => Promise<RenderedPage> {
   return async (url: string): Promise<RenderedPage> => {
-    const deps: RenderWithFallbackDeps = {
-      fetchStatic: (u: string) => defaultFetchPageImpl(u),
-    };
-    try {
-      const { renderWithJs } = await import("../sources/renderJs.js");
-      deps.renderJs = (u: string) => renderWithJs(u);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      warn(`query_docs could not load Playwright renderer: ${message}; static-only`);
-    }
-    return await renderWithFallback(url, deps);
+    const { renderWithJs } = await import("../sources/renderJs.js");
+    return await renderWithJs(url);
   };
 }
 
@@ -242,17 +227,10 @@ export async function handleQueryDocs(
     ...userDeps,
     resolveDocsUrl: userDeps.resolveDocsUrl ?? defaultResolveDocsUrl,
     fetchPage: userDeps.fetchPage ?? defaultFetchPageImpl,
-    // `renderDocs` is the new AC-8 entry point. If the caller
-    // didn't override it, fall back to a static-only path that
-    // uses whatever `fetchPage` override they provided. This
-    // keeps the older `fetchPage`-only test harness working
-    // without forcing every test to know about Playwright.
-    renderDocs:
-      userDeps.renderDocs ??
-      (async (url: string) => {
-        const page = await (userDeps.fetchPage ?? defaultFetchPageImpl)(url);
-        return { ...page, renderer: 'static' as const };
-      }),
+    // `renderDocs` is the JS-only renderer, called only when
+    // `isJsRenderedPage` fires on the static result. `fetchPage`
+    // is always called first (static cheerio path).
+    renderDocs: userDeps.renderDocs ?? defaultJsRendererImpl(),
     loadChunks: userDeps.loadChunks ?? defaultLoadChunksImpl,
     saveChunks: userDeps.saveChunks ?? defaultSaveChunksImpl,
     loadEmbedder: userDeps.loadEmbedder ?? loadEmbedder,
@@ -285,9 +263,11 @@ export async function handleQueryDocs(
       };
     }
     debug(`query_docs fetching ${docsUrl}`);
-    let page: RenderedPage;
+
+    // Stage 1: static (cheerio) fetch.
+    let staticPage: FetchedPage;
     try {
-      page = await deps.renderDocs!(docsUrl);
+      staticPage = await deps.fetchPage!(docsUrl);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return {
@@ -296,7 +276,23 @@ export async function handleQueryDocs(
         message: `Failed to fetch docs at ${docsUrl}: ${message}`,
       };
     }
-    if (page.text.length < 50) {
+
+    // Stage 2: JS fallback when the static body looks like an SPA shell.
+    let page: RenderedPage;
+    if (isJsRenderedPage(staticPage.html, staticPage.text) && deps.renderDocs) {
+      info(`query_docs static body thin (${staticPage.text.length} chars), trying JS renderer`);
+      try {
+        page = await deps.renderDocs(docsUrl);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        warn(`query_docs JS renderer failed: ${message}; using static result`);
+        page = { ...staticPage, renderer: 'static' as const };
+      }
+    } else {
+      page = { ...staticPage, renderer: 'static' as const };
+    }
+
+    if (page.text.length < 20) {
       warn(`query_docs body too small at ${docsUrl} (${page.text.length} chars, renderer=${page.renderer})`);
       return {
         ok: false,

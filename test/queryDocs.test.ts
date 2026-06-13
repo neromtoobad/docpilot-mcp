@@ -86,6 +86,7 @@ function makeDeps(
   return {
     resolveDocsUrl: () => stripeFixturePage.url,
     fetchPage: fetchImpl,
+    loadEmbedder: async () => null,
     loadChunks: async (ecosystem, pkg, version) => {
       return loadChunks(ecosystem, pkg, version);
     },
@@ -168,6 +169,7 @@ describe('AC-3: query_docs — version-accurate, cited, ranked context block', (
         fetchPage: async () => {
           throw new Error('network must not be hit on cache hit');
         },
+        loadEmbedder: async () => null,
         loadChunks: async (ecosystem, pkg, version) => {
           return loadChunks(ecosystem, pkg, version);
         },

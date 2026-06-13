@@ -1,0 +1,89 @@
+{
+  "_doc": "Recorded PyPI JSON response for 'requests'. Shape mirrors the public https://pypi.org/pypi/requests/json endpoint.",
+  "info": {
+    "name": "requests",
+    "version": "2.32.3",
+    "summary": "Python HTTP for Humans.",
+    "home_page": "https://requests.readthedocs.io",
+    "project_urls": {
+      "Documentation": "https://requests.readthedocs.io",
+      "Source": "https://github.com/psf/requests",
+      "Tracker": "https://github.com/psf/requests/issues"
+    }
+  },
+  "releases": {
+    "2.32.0": [
+      {
+        "filename": "requests-2.32.0.tar.gz",
+        "upload_time": "2024-05-20T15:10:00.000000Z"
+      }
+    ],
+    "2.32.1": [
+      {
+        "filename": "requests-2.32.1.tar.gz",
+        "upload_time": "2024-06-04T18:00:00.000000Z"
+      }
+    ],
+    "2.32.2": [
+      {
+        "filename": "requests-2.32.2.tar.gz",
+        "upload_time": "2024-08-14T20:30:00.000000Z"
+      }
+    ],
+    "2.32.3": [
+      {
+        "filename": "requests-2.32.3-py3-none-any.whl",
+        "upload_time": "2024-09-07T13:45:00.000000Z",
+        "url": "https://files.pythonhosted.org/packages/00/00/requests-2.32.3-py3-none-any.whl"
+      }
+    ],
+    "2.31.0": [
+      {
+        "filename": "requests-2.31.0.tar.gz",
+        "upload_time": "2023-05-22T19:13:00.000000Z"
+      }
+    ],
+    "2.30.0": [
+      {
+        "filename": "requests-2.30.0.tar.gz",
+        "upload_time": "2023-05-03T17:14:00.000000Z"
+      }
+    ],
+    "2.29.0": [
+      {
+        "filename": "requests-2.29.0.tar.gz",
+        "upload_time": "2023-04-26T16:10:00.000000Z"
+      }
+    ],
+    "2.28.2": [
+      {
+        "filename": "requests-2.28.2.tar.gz",
+        "upload_time": "2023-01-12T20:27:00.000000Z"
+      }
+    ],
+    "2.28.1": [
+      {
+        "filename": "requests-2.28.1.tar.gz",
+        "upload_time": "2022-06-29T19:40:00.000000Z"
+      }
+    ],
+    "2.28.0": [
+      {
+        "filename": "requests-2.28.0.tar.gz",
+        "upload_time": "2022-06-09T20:10:00.000000Z"
+      }
+    ],
+    "2.27.1": [
+      {
+        "filename": "requests-2.27.1.tar.gz",
+        "upload_time": "2022-01-20T17:45:00.000000Z"
+      }
+    ],
+    "2.27.0": [
+      {
+        "filename": "requests-2.27.0.tar.gz",
+        "upload_time": "2022-01-03T18:30:00.000000Z"
+      }
+    ]
+  }
+}

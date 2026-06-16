@@ -44,6 +44,8 @@ import {
 import { loadEmbedder, type Embedder } from '../index/embed.js';
 import { getKnownDocs } from '../sources/docsSite.js';
 import { fetchPage, type FetchedPage } from '../sources/fetchPage.js';
+import { fetchNpmPackage } from '../sources/registry/npm.js';
+import { fetchPypiPackage } from '../sources/registry/pypi.js';
 import {
   isJsRenderedPage,
   type RenderedPage,
@@ -127,11 +129,41 @@ const DEFAULT_DEPS: QueryDocsDeps = {
 
 function detectEcosystem(pkg: string, hint?: Ecosystem): Ecosystem {
   if (hint) return hint;
-  // Heuristic: well-known npm packages are camelCase or contain
-  // dashes; PyPI packages are typically lowercase-with-dashes too.
-  // We try the known mapping first; this fallback is only used when
-  // the mapping misses. We default to npm because that covers the
-  // AC-3 stripe/next example.
+  // Known-docs mapping is authoritative when it has an entry.
+  if (getKnownDocs('npm', pkg)) return 'npm';
+  if (getKnownDocs('pypi', pkg)) return 'pypi';
+  // Default to npm; registry probing happens asynchronously in
+  // detectEcosystemFromRegistry when the caller provides an HttpClient.
+  return 'npm';
+}
+
+/**
+ * Probe the npm and PyPI registries to determine which ecosystem owns
+ * `pkg`. Tries npm first (the more common case); if the package doesn't
+ * exist on npm, tries PyPI. Falls back to 'npm' on network errors so
+ * the caller always gets a valid ecosystem string.
+ */
+async function detectEcosystemFromRegistry(
+  http: HttpClient,
+  pkg: string,
+): Promise<Ecosystem> {
+  // Known-docs mapping is authoritative.
+  if (getKnownDocs('npm', pkg)) return 'npm';
+  if (getKnownDocs('pypi', pkg)) return 'pypi';
+  // Probe npm registry.
+  try {
+    await fetchNpmPackage(http, pkg);
+    return 'npm';
+  } catch {
+    // Package not found on npm — try PyPI.
+  }
+  try {
+    await fetchPypiPackage(http, pkg);
+    return 'pypi';
+  } catch {
+    // Not on PyPI either — default to npm.
+  }
+  debug(`detectEcosystem pkg=${pkg} not found on npm or PyPI; defaulting to npm`);
   return 'npm';
 }
 
@@ -240,7 +272,7 @@ export async function handleQueryDocs(
     saveVectorIndex: userDeps.saveVectorIndex ?? saveVectorIndex,
   };
 
-  const ecosystem = detectEcosystem(args.package);
+  const ecosystem = await detectEcosystemFromRegistry(deps.http, args.package);
   const version = args.version;
 
   // 1) Chunk cache check.

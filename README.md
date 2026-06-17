@@ -234,7 +234,6 @@ src/
   sources/              # fetchPage, registry clients, GitHub resolver
   extractors/           # TS / Python / markdown chunkers
   index/                # embeddings + hnswlib store + TF-IDF fallback
-  browser/              # Playwright singleton pool
   net/                  # rate-limited, retrying HTTP client
   cache/                # content-addressed paths
   util/                 # logger, error helpers

@@ -68,3 +68,20 @@ export function rawPath(
   return join(rawDir(ecosystem, pkg, version), filename);
 }
 
+/**
+ * Path to the answer-level query cache entry.
+ *
+ * Stores the full `QueryDocsResult` for a `(pkg, version, questionHash)`
+ * triple so identical questions are served from disk without re-fetching
+ * or re-ranking. `questionHash` is a hex-encoded SHA-256 of the question
+ * string, truncated to 16 chars to keep paths short.
+ */
+export function queryCachePath(
+  ecosystem: Ecosystem,
+  pkg: string,
+  version: string,
+  questionHash: string,
+): string {
+  return join(indexDir(ecosystem, pkg, version), 'query', `${questionHash}.json`);
+}
+

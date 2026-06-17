@@ -138,6 +138,10 @@ function makeDeps(): QueryDocsDeps {
       text: FIXTURE_PAGE_TEXT,
     }),
     loadEmbedder: async () => fakeEmbedder,
+    // Bypass the answer-level query cache so these tests exercise the
+    // full chunk → vector → rank pipeline on every call.
+    loadQueryCache: async () => null,
+    saveQueryCache: async () => {},
   };
 }
 

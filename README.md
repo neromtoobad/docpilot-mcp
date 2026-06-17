@@ -172,13 +172,14 @@ Returns `{ signature, params, returns, source: { url, path, line } }`. For npm p
 
 ## Environment variables
 
-| Variable                   | Default                  | Description                                        |
-| -------------------------- | ------------------------ | -------------------------------------------------- |
-| `DOCPILOT_CACHE_DIR`       | `~/.cache/docpilot-mcp`  | Root for chunk cache, vector indexes, raw HTML     |
-| `DOCPILOT_EMBED_CACHE_DIR` | `~/.cache/docpilot-mcp/models` | Where Xenova model weights are stored         |
-| `DOCPILOT_USER_AGENT`      | `docpilot-mcp/0.1.0`    | User-Agent header sent to registries and docs sites|
-| `LOG_LEVEL`                | `info`                   | `debug` \| `info` \| `warn` \| `error`            |
-| `PORT`                     | `3000`                   | HTTP/SSE transport listen port                     |
+| Variable                      | Default                        | Description                                         |
+| ----------------------------- | ------------------------------ | --------------------------------------------------- |
+| `DOCPILOT_CACHE_DIR`          | `~/.cache/docpilot-mcp`        | Root for chunk cache, vector indexes, raw HTML      |
+| `DOCPILOT_EMBED_CACHE_DIR`    | `~/.cache/docpilot-mcp/models` | Where Xenova model weights are stored               |
+| `DOCPILOT_USER_AGENT`         | `docpilot-mcp/0.1.0`           | User-Agent sent to registries and docs sites        |
+| `DOCPILOT_QUERY_CACHE_TTL_MS` | `86400000` (24 h)              | TTL for the answer-level query result cache         |
+| `LOG_LEVEL`                   | `info`                         | `debug` \| `info` \| `warn` \| `error`             |
+| `PORT`                        | `3000`                         | HTTP/SSE transport listen port                      |
 
 ---
 
@@ -240,6 +241,38 @@ src/
 test/                   # vitest specs + offline fixtures
 .github/workflows/      # CI — Node 20 & 22, build + test on every push
 ```
+
+---
+
+## Three-tier caching
+
+docpilot-mcp uses a three-tier cache so repeated calls are served without network access:
+
+| Tier | Key | What's stored | Location |
+|------|-----|---------------|----------|
+| 1 — Chunks | `(pkg, version)` | Plain-text chunks from the docs page | `index/<eco>/<pkg>/<ver>/chunks.jsonl` |
+| 2 — Vector index | `(pkg, version, model)` | hnswlib HNSW index + metadata | `index/<eco>/<pkg>/<ver>/vector.bin` |
+| 3 — Query result | `(pkg, version, SHA256(question))` | Full `QueryDocsResult` JSON | `index/<eco>/<pkg>/<ver>/query/<hash>.json` |
+
+A cache hit on tier 3 (identical question) skips all fetching, chunking, embedding, and ranking.
+
+---
+
+## Troubleshooting
+
+**`No known docs URL` error** — the package isn't in the built-in map and the docs URL couldn't be resolved from the registry `homepage` field. Open a PR to add it to `src/sources/docsSite.ts`.
+
+**Playwright not installed** — run `npx playwright install chromium`. Only needed for JS-rendered docs sites (Stripe, Vercel, Next.js, etc.).
+
+**Stale cached answer** — delete the relevant cache directory under `DOCPILOT_CACHE_DIR`, or set `DOCPILOT_QUERY_CACHE_TTL_MS=0` to disable the answer cache temporarily.
+
+**Debug logging** — set `LOG_LEVEL=debug` to see every fetch, cache hit/miss, and embedding decision.
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, testing requirements, and PR checklist.
 
 ---
 

@@ -51,6 +51,7 @@ import {
   type RenderedPage,
 } from '../sources/renderJs.js';
 import { FetchHttpClient, type HttpClient } from '../net/httpClient.js';
+import { loadQueryCache, saveQueryCache } from '../cache/queryCache.js';
 
 export const MAX_ANSWER_TOKENS = 2000;
 const MAX_QUESTION_TOKENS = 1024;
@@ -83,6 +84,9 @@ export interface QueryDocsDeps {
   /** Override the chunk store (for tests). */
   loadChunks?: (ecosystem: Ecosystem, pkg: string, version: string) => Promise<Chunk[] | null>;
   saveChunks?: (ecosystem: Ecosystem, pkg: string, version: string, chunks: Chunk[]) => Promise<void>;
+  /** Override the answer-level query cache (for tests). */
+  loadQueryCache?: (ecosystem: Ecosystem, pkg: string, version: string, question: string) => Promise<QueryDocsResult | null>;
+  saveQueryCache?: (ecosystem: Ecosystem, pkg: string, version: string, question: string, result: QueryDocsResult) => Promise<void>;
   /**
    * Override the embedder loader. Default delegates to
    * `loadEmbedder()` (which returns `null` on failure and
@@ -265,6 +269,8 @@ export async function handleQueryDocs(
     renderDocs: userDeps.renderDocs ?? defaultJsRendererImpl(),
     loadChunks: userDeps.loadChunks ?? defaultLoadChunksImpl,
     saveChunks: userDeps.saveChunks ?? defaultSaveChunksImpl,
+    loadQueryCache: userDeps.loadQueryCache ?? loadQueryCache,
+    saveQueryCache: userDeps.saveQueryCache ?? saveQueryCache,
     loadEmbedder: userDeps.loadEmbedder ?? loadEmbedder,
     hasVectorIndex: userDeps.hasVectorIndex ?? hasVectorIndex,
     loadVectorIndex: userDeps.loadVectorIndex ?? defaultLoadVectorIndex,
@@ -274,6 +280,14 @@ export async function handleQueryDocs(
 
   const ecosystem = await detectEcosystemFromRegistry(deps.http, args.package);
   const version = args.version;
+
+  // 0) Answer-level query cache — fastest path: identical question served
+  //    from disk without any fetching, chunking, or ranking.
+  const cachedAnswer = await deps.loadQueryCache!(ecosystem, args.package, version, args.question);
+  if (cachedAnswer) {
+    info(`query_docs query-cache=hit pkg=${args.package}@${version}`);
+    return { ok: true, result: cachedAnswer };
+  }
 
   // 1) Chunk cache check.
   let chunks = await deps.loadChunks!(ecosystem, args.package, version);
@@ -368,15 +382,17 @@ export async function handleQueryDocs(
 
   // 4) Build the answer.
   const { answer_markdown, sources } = buildAnswer(top, MAX_ANSWER_TOKENS);
-  return {
-    ok: true,
-    result: {
-      package: args.package,
-      version,
-      answer_markdown,
-      sources,
-    },
-  };
+  const result: QueryDocsResult = { package: args.package, version, answer_markdown, sources };
+
+  // Persist to the answer-level cache for future identical questions.
+  try {
+    await deps.saveQueryCache!(ecosystem, args.package, version, args.question, result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    warn(`query_docs failed to persist query cache: ${message}`);
+  }
+
+  return { ok: true, result };
 }
 
 /**
